@@ -10,16 +10,21 @@ export default function Home() {
   const [result, setResult] = useState("")
   const [error, setError] = useState("")
 
-  const handleSearch = async () => {
-    try {
-      const response = await axios.post("/api/search", { query })
-      setResult(response.data.result)
-      setError("")
-    } catch (error) {
-      setError(error.response?.data?.error || "An error occurred")
-      setResult("")
+const handleSearch = async () => {
+  try {
+    const response = await axios.post("/api/search", { query });
+    setResult(response.data.result);
+    setError("");
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      setError(error.response?.data?.error || "An error occurred");
+    } else {
+      setError("An unexpected error occurred");
     }
+    setResult("");
   }
+};
+
 
   if (!session) {
     return (
