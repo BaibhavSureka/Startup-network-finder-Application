@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         from: process.env.EMAIL_FROM,
         to: session.user.email,
         subject: "Credits Exhausted",
-        text: "Your credits are exhausted. Please check your email to recharge. Reply back to the mail with subject:'recharge 5 credits'",
+        text: "Your credits are exhausted. Please sent new email to baibhavsureka1@gmail.com by mentioning the 'recharge 5 credits' in the subject of your mail to get extra credits.",
       });
 
       return NextResponse.json(
