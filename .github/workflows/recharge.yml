@@ -2,10 +2,14 @@ name: Auto Recharge Check
 on:
   schedule:
     - cron: "*/5 * * * *" # Runs every 5 minutes
+  workflow_dispatch: # This allows manual triggering
 
 jobs:
   recharge:
     runs-on: ubuntu-latest
     steps:
       - name: Call Recharge API
-        run: curl -X POST https://yourdomain.com/api/recharge
+        run: |
+          response=$(curl -X POST -s -o output.txt -w "%{http_code}" https://startup-network-finder-application.vercel.app/api/recharge)
+          echo "Response Code: $response"
+          cat output.txt
