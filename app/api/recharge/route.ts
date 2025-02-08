@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer"; // Make sure @types/nodemailer is installed
+import nodemailer from "nodemailer";
 import { google } from "googleapis";
 
 // Initialize Supabase
@@ -22,7 +22,7 @@ const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 // Email Transporter
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_SERVER_HOST ?? "",
-  port: Number.parseInt(process.env.EMAIL_SERVER_PORT ?? "587"), // Default SMTP Port
+  port: Number.parseInt(process.env.EMAIL_SERVER_PORT ?? "587"),
   auth: {
     user: process.env.EMAIL_SERVER_USER ?? "",
     pass: process.env.EMAIL_SERVER_PASSWORD ?? "",
@@ -70,13 +70,14 @@ export async function POST(req: NextRequest) {
 
     const rechargeEmails = await fetchRechargeEmails();
     if (rechargeEmails.length === 0) {
+      console.log("No new recharge emails.");
       return NextResponse.json({ message: "No new recharge requests found" });
     }
 
     for (const { id, sender } of rechargeEmails) {
       console.log(`Processing recharge for: ${sender}`);
 
-      // Fetch user from Supabase
+      // Fetch user
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("credits, recharge_status")
@@ -88,40 +89,43 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      console.log(
-        `User ${sender} - Current credits: ${userData.credits}, Recharge Status: ${userData.recharge_status}`
-      );
+      console.log(`User ${sender}: Current credits = ${userData.credits}, Recharge Status = ${userData.recharge_status}`);
 
+      // Prevent duplicate emails
       if (userData.recharge_status) {
-        console.log(`User ${sender} has already recharged once. Sending denial email...`);
+        console.log(`User ${sender} already recharged. Skipping update.`);
+
+        // Send denial email only if not already sent
         await transporter.sendMail({
           from: process.env.EMAIL_FROM ?? "",
           to: sender,
           subject: "Credit Recharge Request Denied",
           text: "Sorry, we are not offering additional credits at this time.",
         });
-      } else {
-        console.log(`Recharging user ${sender} with 5 credits...`);
-        const { error: updateError } = await supabase
-          .from("users")
-          .update({ credits: userData.credits + 5, recharge_status: true })
-          .eq("email", sender);
 
-        if (updateError) {
-          console.error(`Error updating user ${sender} credits:`, updateError);
-          continue;
-        }
-
-        console.log(`Sending confirmation email to ${sender}...`);
-        await transporter.sendMail({
-          from: process.env.EMAIL_FROM ?? "",
-          to: sender,
-          subject: "Credits Recharged",
-          text: "Your account has been recharged with 5 additional credits.",
-        });
+        continue; // Prevent reprocessing
       }
 
-      // Mark email as read (Ensure `id` is valid)
+      console.log(`Recharging user ${sender}...`);
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ credits: userData.credits + 5, recharge_status: true })
+        .eq("email", sender);
+
+      if (updateError) {
+        console.error(`Error updating credits for ${sender}:`, updateError);
+        continue;
+      }
+
+      console.log(`Recharge successful. Sending confirmation email to ${sender}...`);
+      await transporter.sendMail({
+        from: process.env.EMAIL_FROM ?? "",
+        to: sender,
+        subject: "Credits Recharged",
+        text: "Your account has been recharged with 5 additional credits.",
+      });
+
+      // Mark email as read
       if (id) {
         console.log(`Marking email ${id} as read...`);
         await gmail.users.messages.modify({
@@ -129,6 +133,7 @@ export async function POST(req: NextRequest) {
           id: id,
           requestBody: { removeLabelIds: ["UNREAD"] },
         });
+        console.log(`Email ${id} marked as read successfully.`);
       } else {
         console.warn("Skipping marking email as read due to missing ID.");
       }
@@ -137,9 +142,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Processed recharge requests" });
   } catch (error) {
     console.error("Recharge processing error:", error);
-    return NextResponse.json(
-      { error: "An error occurred while processing recharges" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "An error occurred while processing recharges" }, { status: 500 });
   }
 }

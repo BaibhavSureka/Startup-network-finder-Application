@@ -36,10 +36,10 @@ export async function POST(req: NextRequest) {
       console.log("API Key:", process.env.GEMINI_API_KEY ? "Loaded ✅" : "Not Found ❌");
     }
 
-    // Fetch user credits
+    // Fetch user credits and recharge status
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("credits")
+      .select("credits, recharge_status")
       .eq("email", session.user.email)
       .single();
 
@@ -48,19 +48,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Error fetching user data" }, { status: 500 });
     }
 
-    // If user has no credits, send email notification
+    // If user has no credits, check their recharge status
     if (userData.credits <= 0) {
-      await transporter.sendMail({
-        from: process.env.EMAIL_FROM,
-        to: session.user.email,
-        subject: "Credits Exhausted",
-        text: "Your credits are exhausted. Please sent new email to baibhavsureka1@gmail.com by mentioning the 'recharge 5 credits' in the subject of your mail to get extra credits.",
-      });
+      if (userData.recharge_status) {
+        // User already used their free recharge → Send denial email
+        await transporter.sendMail({
+          from: process.env.EMAIL_FROM,
+          to: session.user.email,
+          subject: "Credit Recharge Request Denied",
+          text: "Sorry, we are not offering additional credits at this time.",
+        });
 
-      return NextResponse.json(
-        { error: "Your credits are exhausted. Please check your email to recharge." },
-        { status: 403 }
-      );
+        return NextResponse.json(
+          { error: "You have already used your free recharge. No more credits available." },
+          { status: 403 }
+        );
+      } else {
+        // User has not used their free recharge → Send credits exhausted email
+        await transporter.sendMail({
+          from: process.env.EMAIL_FROM,
+          to: session.user.email,
+          subject: "Credits Exhausted",
+          text: "Your credits are exhausted. Please send a new email to baibhavsureka1@gmail.com by mentioning 'recharge 5 credits' in the subject to get extra credits.",
+        });
+
+        return NextResponse.json(
+          { error: "Your credits are exhausted. Please check your email to recharge." },
+          { status: 403 }
+        );
+      }
     }
 
     // Fetch investors and mentors data
