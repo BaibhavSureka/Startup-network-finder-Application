@@ -1,8 +1,7 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
-import { NextApiHandler } from "next";
+import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { createClient } from "@supabase/supabase-js";
-import { Session, User } from "next-auth/core/types"; // Import necessary types
+import { NextRequest } from "next/server";
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
   throw new Error("Missing Supabase environment variables");
@@ -10,7 +9,7 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-export const authOptions: NextAuthOptions = {
+const handler = NextAuth({
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -23,9 +22,9 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  secret: process.env.NEXTAUTH_SECRET, // Required for encryption (production)
+  secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
-    async signIn({ user }: { user: User }) {
+    async signIn({ user }) {
       try {
         if (!user.email) return false;
 
@@ -44,7 +43,7 @@ export const authOptions: NextAuthOptions = {
         return false;
       }
     },
-    async session({ session }: { session: Session }) {
+    async session({ session }) {
       if (!session?.user?.email) return session;
 
       const { data: user, error } = await supabase
@@ -60,12 +59,11 @@ export const authOptions: NextAuthOptions = {
       session.user = user || session.user;
       return session;
     },
-    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+    async redirect({ url, baseUrl }) {
       return url.startsWith(baseUrl) ? url : baseUrl;
     },
   },
-};
+});
 
-const handler: NextApiHandler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };
+export const GET = (req: NextRequest) => handler(req);
+export const POST = (req: NextRequest) => handler(req);
