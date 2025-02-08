@@ -1,28 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer";
+import nodemailer from "nodemailer"; // Make sure @types/nodemailer is installed
 import { google } from "googleapis";
 
 // Initialize Supabase
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+const supabase = createClient(
+  process.env.SUPABASE_URL ?? "",
+  process.env.SUPABASE_ANON_KEY ?? ""
+);
 
 // Gmail API Setup
 const oAuth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID!,
-  process.env.GOOGLE_CLIENT_SECRET!,
-  process.env.GMAIL_REDIRECT_URI!
+  process.env.GOOGLE_CLIENT_ID ?? "",
+  process.env.GOOGLE_CLIENT_SECRET ?? "",
+  process.env.GMAIL_REDIRECT_URI ?? ""
 );
-oAuth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN! });
+oAuth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN ?? "" });
 
 const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
 // Email Transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_SERVER_HOST,
-  port: Number.parseInt(process.env.EMAIL_SERVER_PORT!),
+  host: process.env.EMAIL_SERVER_HOST ?? "",
+  port: Number.parseInt(process.env.EMAIL_SERVER_PORT ?? "587"), // Default SMTP Port
   auth: {
-    user: process.env.EMAIL_SERVER_USER,
-    pass: process.env.EMAIL_SERVER_PASSWORD,
+    user: process.env.EMAIL_SERVER_USER ?? "",
+    pass: process.env.EMAIL_SERVER_PASSWORD ?? "",
   },
 });
 
@@ -30,7 +33,7 @@ const transporter = nodemailer.createTransport({
 async function fetchRechargeEmails() {
   try {
     console.log("Fetching unread recharge emails...");
-    
+
     const response = await gmail.users.messages.list({
       userId: "me",
       q: "is:unread subject:'recharge 5 credits'",
@@ -43,10 +46,12 @@ async function fetchRechargeEmails() {
 
     const emails = [];
     for (const msg of response.data.messages) {
-      const email = await gmail.users.messages.get({ userId: "me", id: msg.id! });
+      if (!msg.id) continue; // Ensure msg.id is valid
+
+      const email = await gmail.users.messages.get({ userId: "me", id: msg.id });
       const fromHeader = email.data.payload?.headers?.find((h) => h.name === "From");
       const emailSender = fromHeader?.value?.match(/<(.*)>/)?.[1] || null;
-      
+
       if (emailSender) emails.push({ id: msg.id, sender: emailSender });
     }
 
@@ -83,12 +88,14 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      console.log(`User ${sender} - Current credits: ${userData.credits}, Recharge Status: ${userData.recharge_status}`);
+      console.log(
+        `User ${sender} - Current credits: ${userData.credits}, Recharge Status: ${userData.recharge_status}`
+      );
 
       if (userData.recharge_status) {
         console.log(`User ${sender} has already recharged once. Sending denial email...`);
         await transporter.sendMail({
-          from: process.env.EMAIL_FROM,
+          from: process.env.EMAIL_FROM ?? "",
           to: sender,
           subject: "Credit Recharge Request Denied",
           text: "Sorry, we are not offering additional credits at this time.",
@@ -107,25 +114,32 @@ export async function POST(req: NextRequest) {
 
         console.log(`Sending confirmation email to ${sender}...`);
         await transporter.sendMail({
-          from: process.env.EMAIL_FROM,
+          from: process.env.EMAIL_FROM ?? "",
           to: sender,
           subject: "Credits Recharged",
           text: "Your account has been recharged with 5 additional credits.",
         });
       }
 
-      // Mark email as read
-      console.log(`Marking email ${id} as read...`);
-      await gmail.users.messages.modify({
-        userId: "me",
-        id: id,
-        requestBody: { removeLabelIds: ["UNREAD"] },
-      });
+      // Mark email as read (Ensure `id` is valid)
+      if (id) {
+        console.log(`Marking email ${id} as read...`);
+        await gmail.users.messages.modify({
+          userId: "me",
+          id: id,
+          requestBody: { removeLabelIds: ["UNREAD"] },
+        });
+      } else {
+        console.warn("Skipping marking email as read due to missing ID.");
+      }
     }
 
     return NextResponse.json({ message: "Processed recharge requests" });
   } catch (error) {
     console.error("Recharge processing error:", error);
-    return NextResponse.json({ error: "An error occurred while processing recharges" }, { status: 500 });
+    return NextResponse.json(
+      { error: "An error occurred while processing recharges" },
+      { status: 500 }
+    );
   }
 }
