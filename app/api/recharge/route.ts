@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     for (const { id, sender } of rechargeEmails) {
-      console.log(Processing recharge for: ${sender});
+      console.log(`Processing recharge for: ${sender}`);
 
       // Fetch user from Supabase
       const { data: userData, error: userError } = await supabase
@@ -79,14 +79,14 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (userError || !userData) {
-        console.error(Error fetching user ${sender}:, userError);
+        console.error(`Error fetching user ${sender}:`, userError);
         continue;
       }
 
-      console.log(User ${sender} - Current credits: ${userData.credits}, Recharge Status: ${userData.recharge_status});
+      console.log(`User ${sender} - Current credits: ${userData.credits}, Recharge Status: ${userData.recharge_status}`);
 
       if (userData.recharge_status) {
-        console.log(User ${sender} has already recharged once. Sending denial email...);
+        console.log(`User ${sender} has already recharged once. Sending denial email...`);
         await transporter.sendMail({
           from: process.env.EMAIL_FROM,
           to: sender,
@@ -94,18 +94,18 @@ export async function POST(req: NextRequest) {
           text: "Sorry, we are not offering additional credits at this time.",
         });
       } else {
-        console.log(Recharging user ${sender} with 5 credits...);
+        console.log(`Recharging user ${sender} with 5 credits...`);
         const { error: updateError } = await supabase
           .from("users")
           .update({ credits: userData.credits + 5, recharge_status: true })
           .eq("email", sender);
 
         if (updateError) {
-          console.error(Error updating user ${sender} credits:, updateError);
+          console.error(`Error updating user ${sender} credits:`, updateError);
           continue;
         }
 
-        console.log(Sending confirmation email to ${sender}...);
+        console.log(`Sending confirmation email to ${sender}...`);
         await transporter.sendMail({
           from: process.env.EMAIL_FROM,
           to: sender,
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Mark email as read
-      console.log(Marking email ${id} as read...);
+      console.log(`Marking email ${id} as read...`);
       await gmail.users.messages.modify({
         userId: "me",
         id: id,
